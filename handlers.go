@@ -5,17 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/mux"
 )
 
 func (api *Api) listPlants(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("GET %v\n", r.RequestURI)
+	log.Printf("GET %v\n", r.RequestURI)
 
 	plants, err := api.DB.GetAllPlants()
 	if err != nil {
+		log.Printf("Error occurred: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -23,15 +26,25 @@ func (api *Api) listPlants(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("GET %v\n", r.RequestURI)
+	log.Printf("GET %v\n", r.RequestURI)
 
-	name := mux.Vars(r)["name"]
-	plant, err := api.DB.GetPlantByName(name)
+	// Retrieve plant ID
+	id, err := strconv.Atoi(mux.Vars(r)["id"]) // TODO abstract this into a reusable func
+	if err != nil {
+		log.Printf("Plant Id '%v' is not an integer", id)
+		writeError(w, 400, "The Plant id must be an integer")
+		return
+	}
+
+	// Get the plant
+	plant, err := api.DB.GetPlantById(id)
 	if err != nil {
 		if errors.Is(err, &NotFoundError{}) {
-			writeError(w, 404, "The specified plant was not found")
+			log.Println("The specified Plant was not found")
+			writeError(w, 404, "The specified Plant was not found")
 			return
 		}
+		log.Printf("Error occurred: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -39,36 +52,46 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("POST %v\n", r.RequestURI)
+	log.Printf("POST %v\n", r.RequestURI)
 
 	// Read payload and parse body into Plant
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Printf("An error occurred while reading the request body: %v\n", err)
+		log.Printf("An error occurred while reading the request body: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
-	newPlantRequest := PostPlantRequest{}
-	if err = json.Unmarshal(body, &newPlantRequest); err != nil {
-		fmt.Printf("The request body could not be parsed into a Plant: %v", err)
+	plantRequest := PlantRequest{}
+	if err = json.Unmarshal(body, &plantRequest); err != nil {
+		log.Printf("The request body could not be parsed into a Plant: %v", err)
 		writeError(w, 400, "The request payload could not be parsed into a Plant")
 		return
 	}
 
 	// Validate the request
-	if validationResults := newPlantRequest.Validate(); len(validationResults) > 0 {
-		fmt.Println("The Plant request is invalid: ", strings.Join(validationResults, "; "))
+	if validationResults := plantRequest.Validate(); len(validationResults) > 0 {
+		log.Println("The Plant request is invalid: ", strings.Join(validationResults, "; "))
 		writeError(w, 400, strings.Join(validationResults, "; "))
 		return
 	}
 
 	// Add the plant
-	if err = api.DB.CreatePlant(Plant(newPlantRequest)); err != nil {
+	newPlant := Plant{
+		Name:       plantRequest.Name,
+		OtherNames: plantRequest.OtherNames,
+		Humidity:   plantRequest.Humidity,
+		Light:      plantRequest.Light,
+		Water:      plantRequest.Water,
+	}
+	if err = api.DB.CreatePlant(Plant(newPlant)); err != nil {
 		var conflictErr *ConflictError
 		if errors.As(err, &conflictErr) {
-			writeError(w, 409, fmt.Sprintf("Plant with %v '%v' already exists", conflictErr.ConflictingKey, conflictErr.ConflictingValue))
+			errMsg := fmt.Sprintf("Plant with %v '%v' already exists", conflictErr.ConflictingKey, conflictErr.ConflictingValue)
+			log.Println(errMsg)
+			writeError(w, 409, errMsg)
 			return
 		}
+		log.Printf("Error occurred: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -76,26 +99,53 @@ func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("PUT %v\n", r.RequestURI)
+	log.Printf("PUT %v\n", r.RequestURI)
 
 	// Read payload and parse body into Plant
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		fmt.Printf("An error occurred while reading the request body: %v\n", err)
+		log.Printf("An error occurred while reading the request body: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
-	newPlantRequest := PutPlantRequest{}
-	if err = json.Unmarshal(body, &newPlantRequest); err != nil {
-		fmt.Printf("The request body could not be parsed into a Plant: %v", err)
+	plantRequest := PlantRequest{}
+	if err = json.Unmarshal(body, &plantRequest); err != nil {
+		log.Printf("The request body could not be parsed into a Plant: %v", err)
 		writeError(w, 400, "The request payload could not be parsed into a Plant")
 		return
 	}
 
-	// Update the plant
-	name := mux.Vars(r)["name"]
-	newPlant := Plant{Name: name, OtherNames: newPlantRequest.OtherNames, Humidity: newPlantRequest.Humidity, Light: newPlantRequest.Light, Water: newPlantRequest.Water} // TODO use a mapper?
-	if err = api.DB.UpsertPlant(name, newPlant); err != nil {
+	// Validate the request
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		log.Printf("Plant Id '%v' is not an integer", id)
+		writeError(w, 400, "The Plant id must be an integer")
+		return
+	}
+	if validationResults := plantRequest.Validate(); len(validationResults) > 0 {
+		log.Println("The Plant request is invalid: ", strings.Join(validationResults, "; "))
+		writeError(w, 400, strings.Join(validationResults, "; "))
+		return
+	}
+
+	// Upsert the plant
+	newPlant := Plant{
+		Id:         id,
+		Name:       plantRequest.Name,
+		OtherNames: plantRequest.OtherNames,
+		Humidity:   plantRequest.Humidity,
+		Light:      plantRequest.Light,
+		Water:      plantRequest.Water,
+	} // TODO use a mapper?
+	if err = api.DB.UpsertPlant(id, newPlant); err != nil {
+		var conflictErr *ConflictError
+		if errors.As(err, &conflictErr) {
+			errMsg := fmt.Sprintf("Plant with %v '%v' already exists", conflictErr.ConflictingKey, conflictErr.ConflictingValue)
+			log.Println(errMsg)
+			writeError(w, 409, errMsg)
+			return
+		}
+		log.Printf("Error occurred: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -103,10 +153,19 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 }
 
 func (api *Api) deletePlant(w http.ResponseWriter, r *http.Request) {
-	fmt.Printf("DELETE %v\n", r.RequestURI)
+	log.Printf("DELETE %v\n", r.RequestURI)
 
-	name := mux.Vars(r)["name"]
-	if err := api.DB.DeletePlant(name); err != nil {
+	// Retrieve plant ID
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	if err != nil {
+		log.Printf("Plant Id '%v' is not an integer", id)
+		writeError(w, 400, "The Plant id must be an integer")
+		return
+	}
+
+	// Delet the plant
+	if err := api.DB.DeletePlant(id); err != nil {
+		log.Printf("Error occurred: %v\n", err)
 		writeError(w, 500, "An error occurred while deleting the plant")
 		return
 	}

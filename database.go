@@ -2,22 +2,15 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"log"
 
+	"github.com/pkg/errors"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
-
-type Database interface {
-	GetAllPlants() ([]Plant, error)
-	GetPlantByName(name string) (Plant, error)
-	CreatePlant(plant Plant) error
-	UpsertPlant(name string, plant Plant) error
-	DeletePlant(name string) error
-	Disconnect()
-}
 
 type MongoDb struct {
 	Driver         *mongo.Client
@@ -25,31 +18,47 @@ type MongoDb struct {
 	CollectionName string
 }
 
-func (db *MongoDb) Disconnect() { // TODO - nece4ssary?
-	fmt.Println("Disconnecting from MongoDB...")
-	if err := db.Driver.Disconnect(context.TODO()); err != nil {
-		fmt.Printf("Error while disconnecting from MongoDB: %v\n", err)
+func (db *MongoDb) Connect() { // TODO return error instead of exit
+	log.Println("Connecting to MongoDB...")                                                                                           // TODO rename DB and env var this
+	dbClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://127.0.0.1:27017/?maxPoolSize=20&w=majority")) // TODO parameterise
+	if err != nil {
+		log.Fatal(fmt.Sprintf("An error occurred while connecting to MongoDB: %v", err))
 	}
-	fmt.Println("Disconnected from MongoDB.")
+
+	if err := dbClient.Ping(context.TODO(), readpref.Primary()); err != nil {
+		log.Fatal(fmt.Sprintf("Error: failed to ping MongoDB: %v", err))
+	}
+
+	db.Driver = dbClient
+	log.Println("Connected to MongoDB.")
+}
+
+func (db *MongoDb) Disconnect() { // TODO Return error
+	log.Println("Disconnecting from MongoDB...")
+	if err := db.Driver.Disconnect(context.TODO()); err != nil {
+		log.Printf("Error while disconnecting from MongoDB: %v\n", err)
+	}
+	log.Println("Disconnected from MongoDB.")
 }
 
 func (db *MongoDb) GetAllPlants() ([]Plant, error) {
-	fmt.Println("Retrieving all plants from MongoDB...")
-
 	// Get plants from DB
+	log.Println("Finding all Plants in MongoDB")
 	filter := bson.D{}
 	collection := *db.Driver.Database(db.DbName).Collection(db.CollectionName)
 	cursor, err := collection.Find(context.TODO(), filter)
 	if err != nil {
-		fmt.Println("An error occurred during MongoDB find: ", err)
-		return []Plant{}, err
+		if errors.As(err, &mongo.ErrNoDocuments) {
+			log.Println("No Plants in database")
+			return []Plant{}, nil
+		}
+		return []Plant{}, errors.Wrap(err, "MongoDB find failed")
 	}
 
 	// Decode all documents
 	var results []bson.M
 	if err = cursor.All(context.TODO(), &results); err != nil {
-		fmt.Println("An error occurred while decoding find results: ", err)
-		return []Plant{}, err
+		return []Plant{}, errors.Wrap(err, "MongoDB decode failed")
 	}
 
 	// Parse docs into Plant objects
@@ -57,52 +66,52 @@ func (db *MongoDb) GetAllPlants() ([]Plant, error) {
 	for _, result := range results {
 		var plant Plant
 		if err := bsonToPlant(result, &plant); err != nil {
-			fmt.Println("An error occurred while parsing the DB result: ", err)
-			return []Plant{}, err
+			return []Plant{}, errors.Wrap(err, "BSON to Plant conversion failed")
 		}
 		plants = append(plants, plant)
 	}
 
-	fmt.Println("Retrieved all plants from MongoDB. Item count: ", len(plants))
+	log.Println("Retrieved all Plants from MongoDB. Item count: ", len(plants))
 	return plants, nil
 }
 
-func (db *MongoDb) GetPlantByName(name string) (Plant, error) {
-	fmt.Printf("Retrieving plant from MongoDB with name '%v'...\n", name)
-
+func (db *MongoDb) GetPlantById(id int) (Plant, error) {
 	// Get plant from DB
-	filter := bson.D{{Key: "name", Value: name}}
+	log.Printf("Finding Plant in MongoDB with id %v...\n", id)
+	filter := bson.D{{Key: "id", Value: id}}
 	collection := *db.Driver.Database(db.DbName).Collection(db.CollectionName)
 	var result bson.D
 	err := collection.FindOne(context.TODO(), filter).Decode(&result)
 	if err != nil {
 		if errors.As(err, &mongo.ErrNoDocuments) {
-			fmt.Println("No Plant found with name: ", name)
 			return Plant{}, &NotFoundError{}
 		}
-		fmt.Println("An error occurred during MongoDB find: ", err)
-		return Plant{}, err
+		return Plant{}, errors.Wrap(err, "MongoDB findOne failed")
 	}
 
 	// Parse DB results into Plant objects
 	var plant Plant
 	if err := bsonToPlant(result, &plant); err != nil {
-		fmt.Println("An error occurred while parsing the DB result: ", err)
-		return Plant{}, err
+		return Plant{}, errors.Wrap(err, "BSON to Plant conversion failed")
 	}
 
-	fmt.Printf("Retrieved plant from MongoDB with name '%v'. Result: %v\n", name, plant.PrettyString())
+	log.Printf("Retrieved Plant from MongoDB with id %v. Result: %v\n", id, plant.PrettyString())
 	return plant, nil
 }
 
 func (db *MongoDb) CreatePlant(plant Plant) error {
-	fmt.Printf("Inserting plant into MongoDB: %v\n", plant.PrettyString())
+	log.Printf("Inserting new Plant into MongoDB: %v\n", plant.PrettyString())
+
+	newId, err := db.generateNewId()
+	if err != nil {
+		return err
+	}
+	plant.Id = newId
 
 	// Convert Plant object into BSON doc
 	_, doc, err := bson.MarshalValue(plant)
 	if err != nil {
-		fmt.Println("An error occurred while converting the plant into BSON: ", err)
-		return err
+		return errors.Wrap(err, "Plant to BSON conversion failed")
 	}
 
 	// Insert plant into DB
@@ -110,66 +119,87 @@ func (db *MongoDb) CreatePlant(plant Plant) error {
 	result, err := collection.InsertOne(context.TODO(), doc)
 	if err != nil {
 		if mongo.IsDuplicateKeyError(err) {
-			fmt.Printf("A Plant with the name '%v' already exists in MongoDB\n", plant.Name)
 			return &ConflictError{ConflictingKey: "name", ConflictingValue: plant.Name}
 		}
-		fmt.Println("An error occurred while inserting the plant into MongoDB: ", err)
-		return err
+		return errors.Wrap(err, "MongoDB insertOne failed")
 	}
 
-	fmt.Println("Inserted plant into MongoDB. _id: ", result.InsertedID)
+	log.Println("Inserted Plant into MongoDB. _id: ", result.InsertedID)
 	return nil
 }
 
-func (db *MongoDb) UpsertPlant(name string, plant Plant) error {
-	fmt.Printf("Upserting plant with name '%v' into MongoDB: %v\n", name, plant.PrettyString())
+func (db *MongoDb) UpsertPlant(id int, plant Plant) error {
+	log.Printf("Upserting Plant with id %v into MongoDB: %v\n", id, plant.PrettyString())
 
 	// Convert Plant object into BSON doc
 	_, doc, err := bson.MarshalValue(plant)
 	if err != nil {
-		fmt.Println("An error occurred while converting the plant into BSON: ", err)
-		return err
+		return errors.Wrap(err, "Plant to BSON conversion failed")
 	}
 
 	// Upsert plant into DB
 	collection := *db.Driver.Database(db.DbName).Collection(db.CollectionName)
-	filter := bson.D{{Key: "name", Value: name}}
+	filter := bson.D{{Key: "id", Value: id}}
 	options := options.Replace().SetUpsert(true)
 	result, err := collection.ReplaceOne(context.TODO(), filter, doc, options)
 	if err != nil {
-		fmt.Println("An error occurred while upserting the plant into MongoDB: ", err)
-		return err
+		if mongo.IsDuplicateKeyError(err) {
+			return &ConflictError{ConflictingKey: "name", ConflictingValue: plant.Name}
+		}
+		return errors.Wrap(err, "MongoDB replaceOne failed")
 	}
 
-	fmt.Printf("Upserted plant into MongoDB. ModifiedCount: %v, UpsertedCount: %v\n", result.ModifiedCount, result.UpsertedCount)
+	log.Printf("Upserted Plant into MongoDB. ModifiedCount: %v, UpsertedCount: %v\n", result.ModifiedCount, result.UpsertedCount)
 	return nil
 }
 
-func (db *MongoDb) DeletePlant(name string) error {
-	fmt.Printf("Deleting plant with name '%v' in MongoDB\n", name)
+func (db *MongoDb) DeletePlant(id int) error {
+	log.Printf("Deleting Plant with id %v in MongoDB\n", id)
 
 	collection := *db.Driver.Database(db.DbName).Collection(db.CollectionName)
-	filter := bson.D{{Key: "name", Value: name}}
-	opts := options.Delete().SetHint(bson.D{{Key: "name", Value: 1}})
+	filter := bson.D{{Key: "id", Value: id}}
+	opts := options.Delete().SetHint(bson.D{{Key: "id", Value: 1}})
 	result, err := collection.DeleteOne(context.TODO(), filter, opts)
 	if err != nil {
-		fmt.Println("An error occurred while deleting the plant in MongoDB: ", err)
-		return err
+		return errors.Wrap(err, "MongoDB deleteOne failed")
 	}
 
-	fmt.Printf("Deleted plant in MongoDB. DeletedCount: %v\n", result.DeletedCount)
+	log.Printf("Deleted Plant in MongoDB. DeletedCount: %v\n", result.DeletedCount)
 	return nil
 }
 
 func bsonToPlant(result interface{}, plant *Plant) error {
 	doc, err := bson.Marshal(result)
 	if err != nil {
-		fmt.Println("Error while marshalling BSON into []byte: ", err)
-		return err
+		return errors.Wrap(err, "BSON marshall failed")
 	}
 	if err := bson.Unmarshal(doc, &plant); err != nil {
-		fmt.Println("Error while unmarshalling document into Plant: ", err)
-		return err
+		return errors.Wrap(err, "BSON unmarshall failed")
 	}
 	return nil
+}
+
+func (db *MongoDb) generateNewId() (int, error) {
+	log.Println("Getting max ID from MongoDB")
+	collection := *db.Driver.Database(db.DbName).Collection(db.CollectionName)
+	filter := bson.D{}
+	options := options.FindOne().SetSort(bson.D{{Key: "id", Value: -1}})
+	var result bson.D
+	err := collection.FindOne(context.TODO(), filter, options).Decode(&result)
+	if err != nil {
+		if errors.As(err, &mongo.ErrNoDocuments) {
+			log.Println("No Plants in database. New ID is 1.")
+			return 1, nil
+		}
+		return -1, errors.Wrap(err, "MongoDB findOne failed")
+	}
+
+	var plant Plant
+	if err = bsonToPlant(result, &plant); err != nil {
+		return -1, errors.Wrap(err, "BSON to Plant conversion failed")
+	}
+
+	newId := plant.Id + 1
+	log.Printf("New plant ID: %v\n", newId)
+	return newId, nil
 }

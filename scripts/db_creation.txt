@@ -1,0 +1,4 @@
+use plantsdb
+db.createCollection("plants")
+db.plants.createIndex( { "id": 1 }, {unique: true} )
+db.plants.createIndex( { "name": 1 }, {unique: true} )

@@ -1,0 +1,62 @@
+db.plants.insertMany( [
+    {
+        "id": 1,
+        "name": "Dracaena Marginata",
+        "otherNames": [
+            "Dragon Tree"
+        ],
+        "light": "bright indirect",
+        "humidity": "high",
+        "water": "moderate"
+    },
+    {
+        "id": 2,
+        "name": "Cordyline Kiwi",
+        "otherNames": null,
+        "light": "bright indirect",
+        "humidity": "high",
+        "water": "moderate"
+    },
+    {
+        "id": 3,
+        "name": "Ficus Tineke",
+        "otherNames": [
+            "Variegated Rubber Plant",
+            "Variegated Rubber Tree",
+            "Variegated Rubber Fig"
+        ],
+        "light": "bright direct",
+        "humidity": "moderate",
+        "water": "moderate"
+    },
+    {
+        "id": 4,
+        "name": "Monstera Deliciosa",
+        "otherNames": [
+            "Swiss Cheese Plant"
+        ],
+        "light": "bright indirect",
+        "humidity": "high",
+        "water": "moderate"
+    },
+    {
+        "id": 5,
+        "name": "Ficus Elastica",
+        "otherNames": [
+            "Rubber Tree, Rubber Plant"
+        ],
+        "light": "bright indirect",
+        "humidity": "moderate",
+        "water": "moderate"
+    },
+    {
+        "id": 6,
+        "name": "Aloe Juvenna",
+        "otherNames": [
+            "Tiger Tooth Aloe"
+        ],
+        "light": "bright indirect",
+        "humidity": "low",
+        "water": "low"
+    }
+] )
