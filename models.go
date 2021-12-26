@@ -54,8 +54,8 @@ type Database interface {
 	CreatePlant(plant Plant) error
 	UpsertPlant(id int, plant Plant) error
 	DeletePlant(id int) error
-	Connect()
-	Disconnect()
+	Connect() error
+	Disconnect() error
 }
 
 // --------------- Errors ---------------

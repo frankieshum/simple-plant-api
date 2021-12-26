@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 
 	"github.com/pkg/errors"
@@ -18,27 +17,29 @@ type MongoDb struct {
 	CollectionName string
 }
 
-func (db *MongoDb) Connect() { // TODO return error instead of exit
-	log.Println("Connecting to MongoDB...")                                                                                           // TODO rename DB and env var this
-	dbClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://127.0.0.1:27017/?maxPoolSize=20&w=majority")) // TODO parameterise
+func (db *MongoDb) Connect() error {
+	log.Println("Connecting to MongoDB...")
+	dbClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://127.0.0.1:27017/?maxPoolSize=20&w=majority")) // TODO config file
 	if err != nil {
-		log.Fatal(fmt.Sprintf("An error occurred while connecting to MongoDB: %v", err))
+		return errors.Wrap(err, "MongoDB connect failed")
 	}
 
 	if err := dbClient.Ping(context.TODO(), readpref.Primary()); err != nil {
-		log.Fatal(fmt.Sprintf("Error: failed to ping MongoDB: %v", err))
+		return errors.Wrap(err, "MongoDB ping failed")
 	}
 
 	db.Driver = dbClient
 	log.Println("Connected to MongoDB.")
+	return nil
 }
 
-func (db *MongoDb) Disconnect() { // TODO Return error
+func (db *MongoDb) Disconnect() error {
 	log.Println("Disconnecting from MongoDB...")
 	if err := db.Driver.Disconnect(context.TODO()); err != nil {
-		log.Printf("Error while disconnecting from MongoDB: %v\n", err)
+		return err
 	}
 	log.Println("Disconnected from MongoDB.")
+	return nil
 }
 
 func (db *MongoDb) GetAllPlants() ([]Plant, error) {

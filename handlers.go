@@ -29,7 +29,7 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET %v\n", r.RequestURI)
 
 	// Retrieve plant ID
-	id, err := strconv.Atoi(mux.Vars(r)["id"]) // TODO abstract this into a reusable func
+	id, err := strconv.Atoi(mux.Vars(r)["id"]) // TODO abstract this into a reusable func?
 	if err != nil {
 		log.Printf("Plant Id '%v' is not an integer", id)
 		writeError(w, 400, "The Plant id must be an integer")
@@ -136,7 +136,7 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 		Humidity:   plantRequest.Humidity,
 		Light:      plantRequest.Light,
 		Water:      plantRequest.Water,
-	} // TODO use a mapper?
+	}
 	if err = api.DB.UpsertPlant(id, newPlant); err != nil {
 		var conflictErr *ConflictError
 		if errors.As(err, &conflictErr) {

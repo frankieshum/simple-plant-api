@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gorilla/mux"
 )
@@ -16,12 +17,15 @@ func (api *Api) Initialise() {
 	api.Router = mux.NewRouter()
 	api.addRoutes()
 
-	api.DB = &MongoDb{DbName: "plantsdb", CollectionName: "plants"} // TODO env var?
-	api.DB.Connect()
+	api.DB = &MongoDb{DbName: "plantsdb", CollectionName: "plants"} // TODO add to config file?
+	if err := api.DB.Connect(); err != nil {
+		log.Println("Error while connecting to MongoDB: ", err)
+		os.Exit(1)
+	}
 }
 
 func (api *Api) Run() {
-	defer api.DB.Disconnect()
+	defer api.DB.Disconnect() // TODO exit gracefully to allow deferred func to run
 	log.Fatal(http.ListenAndServe(":8081", api.Router))
 }
 
