@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// --------------- Plant models ---------------
+// --------------- Request/response ---------------
 
 type PlantRequest struct {
 	Name       string   `json:"name"`
@@ -32,6 +32,12 @@ func (plant *PlantRequest) Validate() []string {
 	return results
 }
 
+type ErrorResponse struct {
+	Error string `json:"error"`
+}
+
+// --------------- Domain ---------------
+
 type Plant struct {
 	Id         int      `json:"id"`
 	Name       string   `json:"name"`
@@ -44,18 +50,6 @@ type Plant struct {
 func (plant *Plant) PrettyString() string {
 	return fmt.Sprintf("Id: %v, Name: %v, OtherNames: [%v], Light: %v, Humidity: %v, Water: %v",
 		plant.Id, plant.Name, strings.Join(plant.OtherNames, ", "), plant.Light, plant.Humidity, plant.Water)
-}
-
-// --------------- Database ---------------
-
-type Database interface {
-	GetAllPlants() ([]Plant, error)
-	GetPlantById(id int) (Plant, error)
-	CreatePlant(plant Plant) error
-	UpsertPlant(id int, plant Plant) error
-	DeletePlant(id int) error
-	Connect() error
-	Disconnect() error
 }
 
 // --------------- Errors ---------------

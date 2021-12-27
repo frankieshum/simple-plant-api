@@ -18,7 +18,7 @@ func (api *Api) listPlants(w http.ResponseWriter, r *http.Request) {
 
 	plants, err := api.DB.GetAllPlants()
 	if err != nil {
-		log.Printf("Error occurred: %v\n", err)
+		log.Printf("Error: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -29,14 +29,13 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET %v\n", r.RequestURI)
 
 	// Retrieve plant ID
-	id, err := strconv.Atoi(mux.Vars(r)["id"]) // TODO abstract this into a reusable func?
+	id, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
 		log.Printf("Plant Id '%v' is not an integer", id)
 		writeError(w, 400, "The Plant id must be an integer")
 		return
 	}
 
-	// Get the plant
 	plant, err := api.DB.GetPlantById(id)
 	if err != nil {
 		if errors.Is(err, &NotFoundError{}) {
@@ -44,7 +43,7 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 404, "The specified Plant was not found")
 			return
 		}
-		log.Printf("Error occurred: %v\n", err)
+		log.Printf("Error: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -54,7 +53,7 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("POST %v\n", r.RequestURI)
 
-	// Read payload and parse body into Plant
+	// Read body and try parse payload into Plant
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("An error occurred while reading the request body: %v\n", err)
@@ -75,7 +74,6 @@ func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add the plant
 	newPlant := Plant{
 		Name:       plantRequest.Name,
 		OtherNames: plantRequest.OtherNames,
@@ -83,7 +81,7 @@ func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 		Light:      plantRequest.Light,
 		Water:      plantRequest.Water,
 	}
-	if err = api.DB.CreatePlant(Plant(newPlant)); err != nil {
+	if err = api.DB.CreatePlant(newPlant); err != nil {
 		var conflictErr *ConflictError
 		if errors.As(err, &conflictErr) {
 			errMsg := fmt.Sprintf("Plant with %v '%v' already exists", conflictErr.ConflictingKey, conflictErr.ConflictingValue)
@@ -91,7 +89,7 @@ func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, errMsg)
 			return
 		}
-		log.Printf("Error occurred: %v\n", err)
+		log.Printf("Error: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -101,7 +99,7 @@ func (api *Api) postPlant(w http.ResponseWriter, r *http.Request) {
 func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("PUT %v\n", r.RequestURI)
 
-	// Read payload and parse body into Plant
+	// Read body and try parse payload into Plant
 	body, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		log.Printf("An error occurred while reading the request body: %v\n", err)
@@ -115,7 +113,7 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate the request
+	// Get ID and validate the request
 	id, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
 		log.Printf("Plant Id '%v' is not an integer", id)
@@ -128,7 +126,6 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Upsert the plant
 	newPlant := Plant{
 		Id:         id,
 		Name:       plantRequest.Name,
@@ -145,7 +142,7 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 409, errMsg)
 			return
 		}
-		log.Printf("Error occurred: %v\n", err)
+		log.Printf("Error: %v\n", err)
 		writeError(w, 500, "An error occurred while processing the request")
 		return
 	}
@@ -163,9 +160,8 @@ func (api *Api) deletePlant(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Delet the plant
 	if err := api.DB.DeletePlant(id); err != nil {
-		log.Printf("Error occurred: %v\n", err)
+		log.Printf("Error: %v\n", err)
 		writeError(w, 500, "An error occurred while deleting the plant")
 		return
 	}
@@ -179,8 +175,8 @@ func writeResponse(w http.ResponseWriter, httpStatusCode int, responseBody inter
 }
 
 func writeError(w http.ResponseWriter, httpStatusCode int, errorMessage string) {
-	errorResponse := map[string]string{
-		"error": errorMessage,
+	resp := ErrorResponse{
+		Error: errorMessage,
 	}
-	writeResponse(w, httpStatusCode, errorResponse)
+	writeResponse(w, httpStatusCode, resp)
 }

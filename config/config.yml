@@ -1,0 +1,8 @@
+MongoDb:
+  DbUrl:
+    mongodb://127.0.0.1:27017/?maxPoolSize=20&w=majority
+  DbName:
+    plantsdb
+  CollectionName:
+    plants
+  

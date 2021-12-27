@@ -5,11 +5,22 @@ import (
 	"log"
 
 	"github.com/pkg/errors"
+	"github.com/spf13/viper"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 	"go.mongodb.org/mongo-driver/mongo/readpref"
 )
+
+type Database interface {
+	GetAllPlants() ([]Plant, error)
+	GetPlantById(id int) (Plant, error)
+	CreatePlant(plant Plant) error
+	UpsertPlant(id int, plant Plant) error
+	DeletePlant(id int) error
+	Connect() error
+	Disconnect() error
+}
 
 type MongoDb struct {
 	Driver         *mongo.Client
@@ -19,7 +30,7 @@ type MongoDb struct {
 
 func (db *MongoDb) Connect() error {
 	log.Println("Connecting to MongoDB...")
-	dbClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI("mongodb://127.0.0.1:27017/?maxPoolSize=20&w=majority")) // TODO config file
+	dbClient, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(viper.GetString("MongoDb.DbUrl")))
 	if err != nil {
 		return errors.Wrap(err, "MongoDB connect failed")
 	}
