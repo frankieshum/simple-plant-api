@@ -8,8 +8,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-
-	"github.com/gorilla/mux"
 )
 
 func (api *Api) listPlants(w http.ResponseWriter, r *http.Request) {
@@ -28,9 +26,10 @@ func (api *Api) getPlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("GET %v\n", r.RequestURI)
 
 	// Retrieve plant ID
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := r.FormValue("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		log.Printf("Plant Id '%v' is not an integer", id)
+		log.Printf("Plant Id '%v' is not an integer", idStr)
 		writeErrorResponse(w, 400, "The Plant id must be an integer")
 		return
 	}
@@ -101,7 +100,8 @@ func (api *Api) putPlant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get ID and validate the request
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := r.FormValue("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		log.Printf("Plant Id '%v' is not an integer", id)
 		writeErrorResponse(w, 400, "The Plant id must be an integer")
@@ -140,7 +140,8 @@ func (api *Api) deletePlant(w http.ResponseWriter, r *http.Request) {
 	log.Printf("DELETE %v\n", r.RequestURI)
 
 	// Retrieve plant ID
-	id, err := strconv.Atoi(mux.Vars(r)["id"])
+	idStr := r.FormValue("id")
+	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		log.Printf("Plant Id '%v' is not an integer", id)
 		writeErrorResponse(w, 400, "The Plant id must be an integer")
@@ -149,7 +150,7 @@ func (api *Api) deletePlant(w http.ResponseWriter, r *http.Request) {
 
 	if err := api.DB.DeletePlant(id); err != nil {
 		log.Printf("Error: %v\n", err)
-		writeErrorResponse(w, 500, "An error occurred while deleting the plant")
+		writeErrorResponse(w, 500, "An error occurred while processing the request")
 		return
 	}
 	writeResponse(w, 204, map[string]string{})
